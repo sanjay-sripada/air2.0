@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AIR — AI in Reality</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03080f;--surface:rgba(0,180,255,.05);--border:rgba(0,200,255,.15);
+  --txt:#d4eeff;--txt2:rgba(180,220,255,.5);--txt3:rgba(180,220,255,.2);
+  --accent:#00c8ff;--accent2:#ff5e2c;--green:#00ffa3;
+  --glow:rgba(0,200,255,.2);--grid:rgba(0,200,255,.028);
+  --btn-face:linear-gradient(135deg,#00c8ff,#0080cc);--btn-txt:#020c18;
+  --canvas-bg:radial-gradient(ellipse at 50% 35%,#071828,#020c16);
+}
+[data-theme=light]{
+  --bg:#eef3fa;--surface:rgba(0,100,200,.05);--border:rgba(0,100,200,.15);
+  --txt:#0d2340;--txt2:rgba(10,40,80,.55);--txt3:rgba(10,40,80,.22);
+  --accent:#0066cc;--accent2:#e04a14;--green:#007a3e;
+  --glow:rgba(0,100,200,.15);--grid:rgba(0,100,200,.04);
+  --btn-face:linear-gradient(135deg,#0077ee,#004cb3);--btn-txt:#fff;
+  --canvas-bg:radial-gradient(ellipse at 50% 35%,#c8dff5,#e8f2ff);
+}
+
+/* ── BODY ── */
+body{background:var(--bg);color:var(--txt);font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden;transition:background .4s,color .4s}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+
+/* ══════════════════════════════
+   AR SESSION — full screen XR
+   dom-overlay makes #ar-root
+   cover the entire screen while
+   XR session is active
+   ══════════════════════════════ */
+#ar-root{
+  /* Invisible when not in AR */
+  display:none;
+  position:fixed;inset:0;z-index:9999;
+  overflow-y:auto;overflow-x:hidden;
+  /* AR session: camera is the background, all children float on top */
+}
+#ar-root.xr-active{display:block}
+
+/* AR glass card style */
+#ar-root .card{
+  background:rgba(0,0,0,.72) !important;
+  border:1px solid rgba(0,255,120,.25) !important;
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+#ar-root .card::before{background:#00ff78 !important}
+#ar-root .slabel{color:#00ff78 !important}
+#ar-root .btn{border-color:rgba(0,255,120,.3) !important;color:rgba(180,255,200,.6) !important}
+#ar-root .btn:hover{border-color:#00ff78 !important;color:#00ff78 !important}
+#ar-root .chip{background:rgba(0,0,0,.6) !important;border-color:rgba(0,255,120,.2) !important;color:rgba(150,255,180,.6) !important;backdrop-filter:blur(8px)}
+#ar-root .chip:hover{border-color:#00ff78 !important;color:#00ff78 !important}
+#ar-root #prompt-input{background:rgba(0,0,0,.7) !important;border-color:rgba(0,255,120,.25) !important;color:#c8ffd4 !important;backdrop-filter:blur(8px)}
+#ar-root #prompt-input::placeholder{color:rgba(150,255,180,.3) !important}
+#ar-root #prompt-input:focus{border-color:#00ff78 !important;box-shadow:0 0 0 3px rgba(0,255,120,.2) !important}
+#ar-root .btn-p{background:linear-gradient(135deg,#00ff78,#009944) !important;color:#000 !important}
+#ar-root .logo{background:linear-gradient(150deg,#00ff78,#c8ffd4,#ffdb00) !important;-webkit-background-clip:text !important;background-clip:text !important}
+#ar-root .logo-tag,#ar-root .logo-sub{color:rgba(150,255,180,.5) !important}
+#ar-root #air-canvas{background:transparent !important}
+#ar-root .vwrap{background:transparent !important;border:1px solid rgba(0,255,120,.2) !important}
+#ar-root .v-badge{background:rgba(0,0,0,.65) !important;border-color:rgba(0,255,120,.3) !important;color:#00ff78 !important}
+#ar-root .corner{border-color:#00ff78 !important}
+#ar-root .ai-msg{background:rgba(0,0,0,.7) !important;border-left-color:#00ff78 !important;backdrop-filter:blur(12px)}
+#ar-root .step{background:rgba(0,0,0,.65) !important;border-color:rgba(0,255,120,.2) !important;backdrop-filter:blur(8px)}
+#ar-root .step-n{color:#00ff78 !important}
+
+/* AR reticle */
+#xr-reticle-hud{
+  display:none;
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:10001;pointer-events:none;
+}
+#xr-reticle-hud.active{display:block}
+@keyframes reticleRing{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.2);opacity:0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glitch{0%,78%,100%{clip-path:none;transform:none}80%{clip-path:inset(18% 0 55% 0);transform:translateX(-3px)}82%{clip-path:inset(55% 0 18% 0);transform:translateX(3px)}84%{clip-path:none}}
+.reticle-wrap{width:80px;height:80px;position:relative}
+.reticle-ring{width:80px;height:80px;border:2px solid rgba(0,255,120,.85);border-radius:50%;animation:pulse 1.8s ease infinite}
+.reticle-dot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:8px;height:8px;background:#00ff78;border-radius:50%}
+.reticle-pulse{position:absolute;inset:-10px;border:1px solid rgba(0,255,120,.3);border-radius:50%;animation:reticleRing 2s ease-out infinite}
+
+/* AR tap-hint */
+#xr-tap-hint{
+  display:none;position:fixed;bottom:110px;left:50%;transform:translateX(-50%);
+  z-index:10001;pointer-events:none;
+  background:rgba(0,0,0,.7);border:1px solid rgba(0,255,120,.3);
+  padding:10px 24px;backdrop-filter:blur(10px);text-align:center;
+}
+#xr-tap-hint.active{display:block}
+.tap-title{font-size:11px;letter-spacing:3px;color:#00ff78;font-family:'JetBrains Mono',monospace}
+.tap-sub{font-size:9px;letter-spacing:1px;color:rgba(180,255,200,.5);margin-top:4px;font-family:'JetBrains Mono',monospace}
+
+@keyframes arGlow{0%,100%{text-shadow:0 0 8px rgba(0,255,120,.4)}50%{text-shadow:0 0 24px rgba(0,255,120,.9)}}
+
+/* ── SHARED UI ── */
+.wrap{max-width:720px;margin:0 auto;padding:24px 16px 80px;position:relative;z-index:1}
+.header{text-align:center;margin-bottom:24px;animation:fadeUp .7s ease both}
+.logo{font-family:'Orbitron',monospace;font-size:clamp(56px,14vw,96px);font-weight:900;letter-spacing:-4px;line-height:.9;background:linear-gradient(150deg,var(--accent),var(--txt) 40%,var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:glitch 8s ease infinite}
+.logo-sub{font-size:9px;letter-spacing:5px;color:var(--txt3);margin-top:7px}
+.logo-tag{font-size:10px;letter-spacing:3px;color:var(--txt2);margin-top:3px;opacity:.7}
+
+.theme-bar{display:flex;justify-content:center;gap:0;margin-bottom:20px;animation:fadeUp .4s ease both;border:1px solid var(--border);overflow:hidden}
+.tbtn{flex:1;background:var(--surface);border:none;border-right:1px solid var(--border);color:var(--txt2);padding:11px 8px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .25s;text-transform:uppercase;max-width:200px}
+.tbtn:last-child{border-right:none}
+.tbtn:hover{color:var(--accent)}
+.tbtn.active{background:var(--accent);color:var(--btn-txt);font-weight:700}
+
+.card{background:var(--surface);border:1px solid var(--border);padding:20px;margin-bottom:13px;position:relative;transition:background .4s,border .4s}
+.card::before{content:'';position:absolute;top:0;left:0;width:36px;height:2px;background:var(--accent)}
+.card.anim{animation:fadeUp .5s ease both}
+.slabel{font-size:9px;letter-spacing:3.5px;color:var(--accent);opacity:.6;margin-bottom:12px;text-transform:uppercase}
+
+.input-row{display:flex;gap:8px;align-items:stretch}
+#prompt-input{flex:1;background:rgba(0,0,0,.2);border:1px solid var(--border);color:var(--txt);padding:13px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;outline:none;transition:border .2s,box-shadow .2s;min-width:0}
+[data-theme=light] #prompt-input{background:rgba(255,255,255,.8)}
+#prompt-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+#prompt-input::placeholder{color:var(--txt3)}
+.btn{background:none;border:1px solid var(--border);color:var(--txt2);padding:13px 14px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer;transition:all .2s;text-transform:uppercase;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn:active{transform:scale(.97)}
+.btn-p{background:var(--btn-face);border:none;color:var(--btn-txt);font-weight:700;padding:13px 20px}
+.btn-p:hover{opacity:.88;box-shadow:0 4px 20px var(--glow);color:var(--btn-txt)}
+.btn-voice{font-size:17px;border-color:rgba(255,94,44,.28);color:rgba(255,150,80,.65);padding:13px 15px}
+.btn-voice.on{border-color:var(--accent2);color:var(--accent2);animation:pulse .8s ease infinite}
+.hint{margin-top:9px;font-size:10px;letter-spacing:1px;color:var(--txt3);line-height:2}
+.voice-ind{margin-top:9px;font-size:10px;letter-spacing:2px;color:var(--accent2)}
+
+.chip-group{margin-bottom:11px}
+.chip-cat{font-size:9px;letter-spacing:3px;color:var(--accent);opacity:.4;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{background:var(--surface);border:1px solid var(--border);color:var(--txt2);padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:10.5px;cursor:pointer;transition:all .18s}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+
+.gen-inner{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:44px 0;text-align:center}
+.gen-ring{width:60px;height:60px;border:2px solid rgba(0,200,255,.1);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.gen-label{font-size:10px;letter-spacing:4px;color:var(--accent)}
+.gen-prompt{font-size:12px;color:var(--txt2);max-width:320px;line-height:1.8;border-left:2px solid var(--accent);padding-left:13px;text-align:left}
+.gen-step{font-size:9px;letter-spacing:2px;color:var(--txt3);margin-top:3px}
+
+.vwrap{position:relative;overflow:hidden;background:var(--canvas-bg)}
+#air-canvas{display:block;width:100%;height:400px;cursor:grab}
+#air-canvas:active{cursor:grabbing}
+.v-badge{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);border:1px solid var(--border);color:var(--accent);font-size:9px;letter-spacing:3px;padding:3px 10px;z-index:10;pointer-events:none;backdrop-filter:blur(6px)}
+.v-label{position:absolute;bottom:10px;left:10px;font-size:9px;letter-spacing:2px;color:var(--accent);opacity:.6;z-index:10;pointer-events:none}
+.v-hint{position:absolute;bottom:10px;right:10px;font-size:9px;color:var(--txt3);z-index:10;pointer-events:none}
+.corner{position:absolute;width:16px;height:16px;pointer-events:none;z-index:5}
+.c-tl{top:9px;left:9px;border-top:2px solid var(--accent);border-left:2px solid var(--accent)}
+.c-tr{top:9px;right:9px;border-top:2px solid var(--accent);border-right:2px solid var(--accent)}
+.c-bl{bottom:9px;left:9px;border-bottom:2px solid var(--accent);border-left:2px solid var(--accent)}
+.c-br{bottom:9px;right:9px;border-bottom:2px solid var(--accent);border-right:2px solid var(--accent)}
+
+.ai-msg{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);padding:11px 14px;font-size:12px;color:var(--txt);margin-top:12px;line-height:1.75}
+.ai-lbl{color:var(--accent);margin-right:7px;font-weight:700}
+.ptag{display:flex;align-items:center;gap:10px;background:rgba(255,94,44,.06);border:1px solid rgba(255,94,44,.2);border-left:3px solid var(--accent2);padding:9px 13px;font-size:11px;color:var(--accent2);letter-spacing:1px;margin-bottom:12px}
+.ptag-lbl{opacity:.5;font-size:9px;letter-spacing:3px;white-space:nowrap}
+
+/* AR launch button */
+.ar-btn{width:100%;margin-top:14px;background:linear-gradient(135deg,#00ff78,#009944);border:none;color:#000;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:3px;padding:17px;cursor:pointer;text-transform:uppercase;transition:opacity .2s,box-shadow .2s;position:relative;overflow:hidden}
+.ar-btn:hover{opacity:.9;box-shadow:0 6px 30px rgba(0,255,100,.35)}
+.ar-btn:disabled{background:rgba(100,100,100,.2);color:var(--txt3);cursor:not-allowed;box-shadow:none}
+.ar-sub{text-align:center;margin-top:6px;font-size:9px;letter-spacing:2px;color:var(--txt3)}
+.ar-no-sup{background:rgba(255,94,44,.06);border:1px solid rgba(255,94,44,.2);border-left:3px solid var(--accent2);padding:12px 14px;margin-top:12px;font-size:11px;color:var(--txt2);line-height:1.9}
+.ar-no-sup strong{color:var(--accent2)}
+
+.slider-row{display:flex;align-items:center;gap:12px;margin-top:12px}
+.slider-row label{font-size:9px;letter-spacing:2px;color:var(--txt3);white-space:nowrap}
+.slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+.sval{font-size:11px;color:var(--accent);min-width:36px;text-align:right}
+.controls{display:flex;gap:8px;margin-top:11px}
+.controls .btn{flex:1;text-align:center}
+
+.compat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.ci{background:var(--surface);border:1px solid var(--border);padding:10px 12px}
+.cn{font-size:9px;letter-spacing:2px;color:var(--txt3)}
+.cv{font-size:11px;margin-top:4px}
+.ok{color:var(--green)}.warn{color:var(--accent2)}.chk{color:var(--txt3)}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.step{background:var(--surface);border:1px solid var(--border);padding:12px 8px;text-align:center}
+.step-i{font-size:20px;margin-bottom:5px}
+.step-n{font-size:9px;letter-spacing:2px;color:var(--accent);opacity:.5}
+.step-d{font-size:10px;color:var(--txt3);margin-top:3px;line-height:1.5}
+
+.notice{background:rgba(255,94,44,.05);border:1px solid rgba(255,94,44,.18);border-left:3px solid var(--accent2);padding:12px 14px;margin-bottom:14px;font-size:11px;color:var(--txt2);line-height:1.85;animation:fadeUp .5s ease both}
+.notice strong{color:var(--accent2)}
+.notice code{background:rgba(255,94,44,.1);padding:1px 6px;font-size:10px;color:var(--accent2)}
+.footer{text-align:center;margin-top:40px;font-size:9px;letter-spacing:3px;color:var(--txt3);opacity:.35}
+.hidden{display:none!important}
+@media(max-width:520px){.steps{grid-template-columns:1fr 1fr}.compat-grid{grid-template-columns:1fr}.input-row{flex-wrap:wrap}#prompt-input{width:100%}}
+</style>
+</head>
+<body data-theme="dark">
+
+<!-- ══ XR RETICLE & TAP HINT (fixed, above ar-root) ══ -->
+<div id="xr-reticle-hud">
+  <div class="reticle-wrap">
+    <div class="reticle-ring"></div>
+    <div class="reticle-dot"></div>
+    <div class="reticle-pulse"></div>
+  </div>
+</div>
+<div id="xr-tap-hint">
+  <div class="tap-title" id="tap-title">POINT AT A FLAT SURFACE</div>
+  <div class="tap-sub" id="tap-sub">Move phone slowly to detect floor · tap to place</div>
+</div>
+
+<!-- ══ AR ROOT — entire app lives here during XR session ══ -->
+<div id="ar-root">
+  <div class="wrap" id="ar-wrap"></div>
+</div>
+
+<!-- ══ NORMAL PAGE ══ -->
+<div class="wrap" id="main-wrap">
+
+  <div class="header">
+    <div class="logo">AIR</div>
+    <div class="logo-sub">AI IN REALITY</div>
+    <div class="logo-tag">DESCRIBE · GENERATE · PLACE IN THE REAL WORLD</div>
+  </div>
+
+  <div class="theme-bar">
+    <button class="tbtn active" onclick="setTheme('dark',this)">◼ DARK</button>
+    <button class="tbtn" onclick="setTheme('light',this)">◻ LIGHT</button>
+    <button class="tbtn" id="ar-tab-btn" onclick="window.enterAR&&window.enterAR()">📷 ENTER AR</button>
+  </div>
+
+  <div class="notice">
+    <strong>⚠ AR + AI need HTTPS</strong> —
+    run <code>python3 -m http.server 8080</code> or deploy free:
+    <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--accent)">Netlify Drop</a>.
+    Keywords work offline.
+  </div>
+
+  <!-- Shared UI injected here AND into ar-root -->
+  <div id="shared-ui"></div>
+
+</div><!-- /main-wrap -->
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ════════════════════════════════════════
+   BUILD SHARED UI (used in both contexts)
+   ════════════════════════════════════════ */
+function buildUI() {
+  return `
+  <div class="card anim" id="compat-card">
+    <div class="slabel">Device Status</div>
+    <div class="compat-grid">
+      <div class="ci"><div class="cn">WEBXR AR</div><div class="cv" id="s-webxr"><span class="chk">…</span></div></div>
+      <div class="ci"><div class="cn">HIT-TEST</div><div class="cv" id="s-ht"><span class="chk">…</span></div></div>
+      <div class="ci"><div class="cn">VOICE</div><div class="cv" id="s-voice"><span class="chk">…</span></div></div>
+      <div class="ci"><div class="cn">3D ENGINE</div><div class="cv"><span class="ok">✓ READY</span></div></div>
+    </div>
+  </div>
+
+  <div class="card anim" id="input-card" style="animation-delay:.08s">
+    <div class="slabel">01 / Describe Your Object</div>
+    <div class="input-row">
+      <input id="prompt-input" type="text" placeholder='e.g. "a Bengal tiger"' autocomplete="off" spellcheck="false"/>
+      <button class="btn btn-voice" id="voice-btn" onclick="toggleVoice()">🎙</button>
+      <button class="btn btn-p" onclick="generate()">Generate ↗</button>
+    </div>
+    <div id="voice-ind" class="voice-ind hidden">● LISTENING — speak now</div>
+    <div class="hint">Try: "tiger" · "red Ferrari" · "rocket" · "snowy mountain" · "monstera plant"</div>
+  </div>
+
+  <div class="card anim" id="picks-card" style="animation-delay:.12s">
+    <div class="slabel">Quick Picks</div>
+    <div id="chips-wrap"></div>
+  </div>
+
+  <div class="card hidden" id="gen-card">
+    <div class="gen-inner">
+      <div class="gen-ring"></div>
+      <div class="gen-label">AIR IS PROCESSING</div>
+      <div class="gen-prompt" id="gq"></div>
+      <div class="gen-step" id="gs">CLASSIFYING OBJECT</div>
+    </div>
+  </div>
+
+  <div id="viewer-section" class="hidden">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="slabel" style="padding:18px 20px 0">02 / Preview & AR Placement</div>
+      <div style="padding:5px 20px 12px">
+        <div class="ptag"><span class="ptag-lbl">VIEWING</span><span id="ptag-text">—</span></div>
+      </div>
+      <div class="vwrap" id="vwrap">
+        <div class="corner c-tl"></div><div class="corner c-tr"></div>
+        <div class="corner c-bl"></div><div class="corner c-br"></div>
+        <div class="v-badge">● LIVE 3D</div>
+        <div class="v-label" id="vlabel"></div>
+        <div class="v-hint">DRAG · ROTATE · ZOOM</div>
+        <canvas id="air-canvas"></canvas>
+      </div>
+      <div style="padding:6px 20px 20px">
+        <div class="ai-msg hidden" id="ai-msg"><span class="ai-lbl">AIR ›</span><span id="ai-txt"></span></div>
+        <button class="ar-btn" id="ar-place-btn" onclick="handlePlace()">
+          📷 &nbsp; PLACE IN YOUR WORLD (WebAR)
+        </button>
+        <div class="ar-sub" id="ar-sub">Checking WebXR support…</div>
+        <div class="ar-no-sup hidden" id="ar-no-sup">
+          <strong>WebXR not available.</strong>
+          Needs Android Chrome + HTTPS.
+          <a href="https://app.netlify.com/drop" target="_blank" style="color:var(--accent)">Deploy free →</a>
+        </div>
+        <div class="slider-row">
+          <label>SCALE</label>
+          <input type="range" min="0.2" max="3" step="0.05" value="1" oninput="setScale(this.value)"/>
+          <span class="sval" id="sval">1.0×</span>
+        </div>
+        <div class="controls">
+          <button class="btn" onclick="goBack()">← NEW PROMPT</button>
+          <button class="btn" onclick="doShare()">↑ SHARE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card anim" id="how-card" style="animation-delay:.18s">
+    <div class="slabel">How AIR Works</div>
+    <div class="steps">
+      <div class="step"><div class="step-i">✍️</div><div class="step-n">01</div><div class="step-d">Describe any object</div></div>
+      <div class="step"><div class="step-i">🤖</div><div class="step-n">02</div><div class="step-d">AI classifies & colors</div></div>
+      <div class="step"><div class="step-i">🔷</div><div class="step-n">03</div><div class="step-d">3D renders instantly</div></div>
+      <div class="step"><div class="step-i">📱</div><div class="step-n">04</div><div class="step-d">WebXR places in world</div></div>
+    </div>
+  </div>
+  <div class="footer">AIR V3.2 · CLAUDE AI + THREE.JS + WEBXR DOM-OVERLAY</div>`;
+}
+
+/* ════════════════════════════════════════
+   OBJECT DATA
+   ════════════════════════════════════════ */
+const OBJ = {
+  chair:{label:'Chair',color:'#4a9eff'},table:{label:'Table',color:'#ff8c42'},
+  lamp:{label:'Lamp',color:'#ffd700'},sofa:{label:'Sofa',color:'#9b59b6'},
+  shelf:{label:'Shelf',color:'#2ecc71'},plant:{label:'Plant',color:'#27ae60'},
+  cabinet:{label:'Cabinet',color:'#e67e22'},monitor:{label:'Monitor',color:'#8e44ad'},
+  bed:{label:'Bed',color:'#16a085'},tiger:{label:'Tiger',color:'#ff8c00'},
+  cat:{label:'Cat',color:'#c8a882'},dog:{label:'Dog',color:'#c8956c'},
+  elephant:{label:'Elephant',color:'#909090'},bird:{label:'Bird',color:'#4fc3f7'},
+  fish:{label:'Fish',color:'#29b6f6'},tree:{label:'Tree',color:'#2e7d32'},
+  rock:{label:'Rock',color:'#78909c'},mountain:{label:'Mountain',color:'#546e7a'},
+  car:{label:'Car',color:'#ef5350'},rocket:{label:'Rocket',color:'#90a4ae'},
+  house:{label:'House',color:'#ef9a9a'},sphere:{label:'Sphere',color:'#ab47bc'},
+  box:{label:'Box',color:'#607d8b'},
+};
+const CATS = {
+  '🪑 Furniture':['chair','table','lamp','sofa','shelf','plant','cabinet','monitor','bed'],
+  '🐾 Animals':['tiger','cat','dog','elephant','bird','fish'],
+  '🌿 Nature':['tree','rock','mountain'],
+  '🚀 Vehicles':['car','rocket'],
+  '🏠 Objects':['house','sphere','box'],
+};
+
+function buildChips() {
+  const cw = document.getElementById('chips-wrap');
+  if (!cw) return;
+  cw.innerHTML = '';
+  for (const [cat, keys] of Object.entries(CATS)) {
+    const g = document.createElement('div'); g.className = 'chip-group';
+    const cl = document.createElement('div'); cl.className = 'chip-cat'; cl.textContent = cat; g.appendChild(cl);
+    const cr = document.createElement('div'); cr.className = 'chips';
+    keys.forEach(k => {
+      const b = document.createElement('button'); b.className = 'chip';
+      b.textContent = OBJ[k].label;
+      b.onclick = () => { document.getElementById('prompt-input').value = `a ${OBJ[k].label.toLowerCase()}`; };
+      cr.appendChild(b);
+    });
+    g.appendChild(cr); cw.appendChild(g);
+  }
+}
+
+// Inject into main page — after OBJ/CATS/buildChips are defined
+document.getElementById('shared-ui').innerHTML = buildUI();
+buildChips();
+
+/* ════════════════════════════════════════
+   THEME
+   ════════════════════════════════════════ */
+window.setTheme = (t, btn) => {
+  document.body.setAttribute('data-theme', t);
+  document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (renderer) {
+    renderer.setClearColor(t === 'light' ? 0xe8f2ff : 0x000000, t === 'light' ? 1 : 0);
+  }
+};
+
+
+/* ════════════════════════════════════════
+   COMPAT
+   ════════════════════════════════════════ */
+let webxrOK = false;
+(async () => {
+  if (navigator.xr) {
+    webxrOK = await navigator.xr.isSessionSupported('immersive-ar').catch(() => false);
+    document.getElementById('s-webxr').innerHTML = webxrOK ? '<span class="ok">✓ SUPPORTED</span>' : '<span class="warn">✗ NOT SUPPORTED</span>';
+    document.getElementById('s-ht').innerHTML = webxrOK ? '<span class="ok">✓ AVAILABLE</span>' : '<span class="warn">✗ N/A</span>';
+  } else {
+    document.getElementById('s-webxr').innerHTML = '<span class="warn">✗ NO WEBXR</span>';
+    document.getElementById('s-ht').innerHTML = '<span class="warn">✗ N/A</span>';
+  }
+  document.getElementById('s-voice').innerHTML = ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
+    ? '<span class="ok">✓ AVAILABLE</span>' : '<span class="warn">~ CHROME ONLY</span>';
+  updateARBtn();
+})();
+
+function updateARBtn() {
+  const btn = document.getElementById('ar-place-btn');
+  const sub = document.getElementById('ar-sub');
+  if (!btn) return;
+  if (webxrOK) {
+    btn.disabled = false;
+    sub.textContent = 'WebXR ready · tap to open camera AR';
+    document.getElementById('ar-no-sup').classList.add('hidden');
+  } else {
+    btn.disabled = false;
+    sub.textContent = 'See requirements below';
+    document.getElementById('ar-no-sup').classList.remove('hidden');
+  }
+}
+
+/* ════════════════════════════════════════
+   THREE.JS PREVIEW
+   ════════════════════════════════════════ */
+let renderer, scene, camera, controls, group;
+let autoRot = true, scaleMul = 1;
+
+function initThree() {
+  const canvas = document.getElementById('air-canvas');
+  const w = canvas.parentElement.clientWidth || 680, h = 400;
+  canvas.width = w; canvas.height = h;
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.shadowMap.enabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.35;
+  renderer.setClearColor(0x000000, 0);
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(42, w / h, 0.01, 100);
+  camera.position.set(0, 1.6, 4.8);
+  controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true; controls.dampingFactor = 0.07;
+  controls.minDistance = 0.8; controls.maxDistance = 16;
+  controls.target.set(0, 0.65, 0); controls.update();
+  controls.addEventListener('start', () => { autoRot = false; });
+  scene.add(new THREE.AmbientLight(0x3355aa, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 2.4);
+  key.position.set(5, 7, 4); key.castShadow = true; scene.add(key);
+  const fill = new THREE.DirectionalLight(0x88aeff, 0.8);
+  fill.position.set(-4, 2, -3); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xff7744, 0.4);
+  rim.position.set(0, 3, -7); scene.add(rim);
+  const grid = new THREE.GridHelper(14, 28, 0x00c8ff, 0x001828);
+  grid.material.opacity = 0.28; grid.material.transparent = true; scene.add(grid);
+  window.addEventListener('resize', () => {
+    const nw = canvas.parentElement.clientWidth || 680;
+    renderer.setSize(nw, h); camera.aspect = nw / h; camera.updateProjectionMatrix();
+  });
+  (function loop() {
+    requestAnimationFrame(loop);
+    controls.update();
+    if (group && autoRot) group.rotation.y += 0.006;
+    renderer.render(scene, camera);
+  })();
+}
+
+/* ════════════════════════════════════════
+   GEOMETRY
+   ════════════════════════════════════════ */
+const mat = (hex, r=0.45, m=0.45) => new THREE.MeshStandardMaterial({color:new THREE.Color(hex),roughness:r,metalness:m});
+function buildModel(type, hex) {
+  const g = new THREE.Group();
+  const M=(geo,mat)=>new THREE.Mesh(geo,mat);
+  const add=(mesh,px=0,py=0,pz=0)=>{mesh.position.set(px,py,pz);g.add(mesh);return mesh;};
+  const box=(w,h,d,col,r,m)=>M(new THREE.BoxGeometry(w,h,d),mat(col||hex,r,m));
+  const cyl=(rt,rb,h,col,r,m)=>M(new THREE.CylinderGeometry(rt,rb,h,16),mat(col||hex,r,m));
+  const sph=(rad,col,r,m)=>M(new THREE.SphereGeometry(rad,14,14),mat(col||hex,r,m));
+  const cone=(r,h,col,ro,me)=>M(new THREE.ConeGeometry(r,h,12),mat(col||hex,ro,me));
+  switch(type){
+    case 'chair': add(box(.72,.075,.72),0,.5,0);add(box(.72,.68,.075),0,.865,-.315);[-.3,.3].forEach(x=>[-.3,.3].forEach(z=>add(cyl(.045,.045,.5),x,.25,z)));break;
+    case 'table': add(box(1.5,.08,.9),0,.8,0);[-.65,.65].forEach(x=>[-.38,.38].forEach(z=>add(cyl(.055,.055,.8),x,.4,z)));break;
+    case 'lamp':{add(cyl(.22,.27,.08),0,0,0);add(cyl(.032,.032,1.35),0,.72,0);add(M(new THREE.ConeGeometry(.4,.55,16,1,true),mat(hex,.5,.1)),0,1.6,0);add(M(new THREE.SphereGeometry(.092),new THREE.MeshStandardMaterial({color:'#ffffc8',emissive:'#ffff99',emissiveIntensity:5})),0,1.42,0);const pl=new THREE.PointLight(0xffffaa,2,3.5);pl.position.set(0,1.42,0);g.add(pl);break;}
+    case 'sofa': add(box(1.85,.32,.78),0,.16,0);add(box(1.75,.2,.72),0,.42,0);add(box(1.85,.58,.12),0,.7,-.33);[-.83,.83].forEach(x=>add(box(.16,.42,.78),x,.37,0));break;
+    case 'shelf': [0,.48,.96,1.44].forEach(y=>add(box(1.44,.055,.34),0,y,0));[-.72,.72].forEach(x=>add(box(.055,1.5,.34,hex,.5,.2),x,.75,0));break;
+    case 'plant':{add(cyl(.24,.3,.4,'#bf6f2f',.9,.05),0,.2,0);add(cyl(.032,.032,.45,'#285522'),0,.65,0);for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2,lf=sph(.24,hex,.8,.04);lf.scale.set(.55,.95,.55);add(lf,Math.cos(a)*.16,.96+Math.random()*.3,Math.sin(a)*.16);}break;}
+    case 'cabinet': add(box(.95,1.24,.44),0,.62,0);[-.225,.225].forEach(x=>{add(box(.44,.58,.052,hex,.3,.3),x,.92,.23);add(sph(.032,'#ddd',.1,.85),x+(x>0?-.07:.07),.92,.26);});break;
+    case 'monitor': add(cyl(.19,.23,.06),0,0,0);add(box(.065,.3,.065),0,.18,0);add(box(1.22,.74,.08),0,.6,0);add(M(new THREE.BoxGeometry(1.14,.66,.01),new THREE.MeshStandardMaterial({color:'#030812',emissive:'#002299',emissiveIntensity:.4})),0,.6,.045);break;
+    case 'bed': add(box(1.44,.18,2.16),0,.09,0);add(box(1.36,.2,2.08,hex,.9,.02),0,.28,0);add(box(1.44,.74,.1),0,.53,-.98);add(box(1.16,.1,.4,'#f5f5f5',.9,0),0,.38,-.68);break;
+    case 'tiger':case 'cat':case 'dog':{const body=sph(.34,hex,.8,.04);body.scale.set(1.62,.86,.88);add(body,0,.44,0);add(sph(.27,hex,.8,.04),.6,.64,0);const snout=sph(.13,hex,.7,0);snout.scale.set(1,.66,.82);add(snout,.8,.58,0);[-.11,.11].forEach(z=>{const e=cone(.085,.17);e.position.set(.52,.89,z);g.add(e);});[[-0.24,.2,-.16],[-.24,.2,.16],[.18,.2,-.16],[.18,.2,.16]].forEach(([x,y,z])=>add(cyl(.065,.065,.42),x,y,z));const tail=cyl(.038,.02,.62);tail.rotation.z=-.52;add(tail,-.67,.54,0);if(type==='tiger')[-.22,-.07,.08,.23,-.37].forEach(x=>{const s=M(new THREE.BoxGeometry(.048,.58,.64),new THREE.MeshStandardMaterial({color:'#180700',roughness:.9}));s.position.set(x,.44,0);g.add(s);});break;}
+    case 'elephant':{const body=sph(.54,hex,.9,.04);body.scale.set(1,.84,.8);add(body,0,.64,0);add(sph(.38,hex,.9,.04),.64,.84,0);const trunk=cyl(.085,.052,.68);trunk.rotation.z=Math.PI/2.05;add(trunk,1.02,.56,0);[-1,1].forEach(s=>{const e=sph(.34,hex,.9,0);e.scale.set(.24,.68,.68);add(e,.46,.84,s*.38);});[[-0.26,.3,-.28],[-.26,.3,.28],[.26,.3,-.28],[.26,.3,.28]].forEach(([x,y,z])=>add(cyl(.13,.13,.58),x,y,z));break;}
+    case 'bird':{const body=sph(.26,hex,.7,.1);body.scale.set(1,.8,1.38);add(body,0,.52,0);add(sph(.17,hex,.7,.1),0,.72,.28);const bk=cone(.048,.18,'#ffcc00',.5,.15);bk.rotation.x=Math.PI/2;add(bk,0,.72,.48);[-1,1].forEach(s=>{const w=box(.58,.055,.32,hex,.7,.05);w.rotation.z=s*.32;add(w,s*.4,.56,0);});break;}
+    case 'fish':{const body=sph(.34,hex,.5,.4);body.scale.set(1.72,.7,.84);add(body,0,.52,0);const tail=cone(.24,.38,hex,.5,.3);tail.rotation.z=Math.PI/2;add(tail,-.64,.52,0);add(cone(.15,.28,hex,.5,.3),0,.76,0);add(M(new THREE.SphereGeometry(.048),new THREE.MeshStandardMaterial({color:'#000',metalness:.9})),.38,.6,.24);break;}
+    case 'tree': add(cyl(.13,.19,.95,'#6d4c41',.9,.04),0,.48,0);[[0,1.25,0,.64],[0,1.72,0,.5],[0,2.12,0,.36]].forEach(([x,y,z,r])=>add(cone(r,.64,hex,.85,.03),x,y,z));break;
+    case 'rock': [[0,.26,0,.37,.26,.32],[.22,.22,.14,.26,.22,.24],[-.2,.2,-.14,.24,.2,.26]].forEach(([x,y,z,rx,ry,rz])=>{const r=M(new THREE.DodecahedronGeometry(.3),mat(hex,.96,.04));r.scale.set(rx/.3,ry/.3,rz/.3);r.position.set(x,y,z);r.rotation.set(Math.random()*2,Math.random()*2,Math.random()*2);g.add(r);});break;
+    case 'mountain': [[0,.65,0,.95,1.28],[.48,.48,-.22,.64,.94],[-.44,.42,.14,.57,.82]].forEach(([x,y,z,r,h],i)=>{add(cone(r,h,i?'#607d8b':hex,.9,.08),x,h/2,z);add(cone(r*.32,h*.26,'#ffffff',.95,0),x,h*.88,z);});break;
+    case 'car':{add(box(1.84,.32,.84,hex,.25,.78),0,.32,0);add(box(1.04,.36,.78,hex,.3,.6),-.06,.64,0);add(M(new THREE.BoxGeometry(.032,.3,.7),new THREE.MeshStandardMaterial({color:'#99ccff',roughness:.04,transparent:true,opacity:.6})),.47,.64,0);[[-.6,.18,-.44],[.6,.18,-.44],[-.6,.18,.44],[.6,.18,.44]].forEach(([x,y,z])=>{const w=M(new THREE.CylinderGeometry(.18,.18,.12,18),mat('#111',.9,.1));w.rotation.x=Math.PI/2;w.position.set(x,y,z);g.add(w);const rim=M(new THREE.CylinderGeometry(.1,.1,.14,12),mat('#ccc',.2,.9));rim.rotation.x=Math.PI/2;rim.position.set(x,y,z);g.add(rim);});[[.84,.34,-.25],[.84,.34,.25]].forEach(([x,y,z])=>{const hl=M(new THREE.CylinderGeometry(.07,.07,.04,12),new THREE.MeshStandardMaterial({color:'#ffffee',emissive:'#ffff88',emissiveIntensity:4}));hl.rotation.z=Math.PI/2;hl.position.set(x,y,z);g.add(hl);});break;}
+    case 'rocket':{add(cyl(.21,.21,1.44),0,.92,0);add(cone(.21,.52,'#e53935',.3,.65),0,1.9,0);add(cyl(.26,.19,.22,'#455a64',.4,.8),0,.22,0);for(let i=0;i<4;i++){const a=(i/4)*Math.PI*2;const fin=box(.054,.42,.34);fin.position.set(Math.cos(a)*.26,.42,Math.sin(a)*.26);fin.rotation.y=a;g.add(fin);}const fl=M(new THREE.ConeGeometry(.145,.42,14),new THREE.MeshStandardMaterial({color:'#ff6200',emissive:'#ff2200',emissiveIntensity:4.5,transparent:true,opacity:.82}));fl.rotation.x=Math.PI;fl.position.y=.04;g.add(fl);const fpl=new THREE.PointLight(0xff4400,3,2.5);fpl.position.y=.04;g.add(fpl);break;}
+    case 'house':{add(box(1.14,.84,.94,'#ef9a9a',.9,.04),0,.42,0);const roof=cone(.86,.52,'#c62828',.8,.08);roof.rotation.y=Math.PI/4;add(roof,0,1.1,0);add(box(.22,.42,.024,'#6d4c41',.8,.2),0,.21,.48);[-.34,.34].forEach(x=>add(M(new THREE.BoxGeometry(.22,.22,.024),new THREE.MeshStandardMaterial({color:'#aaddff',transparent:true,opacity:.72})),x,.5,.48));break;}
+    case 'sphere': add(sph(.58,hex,.2,.86),0,.58,0);add(M(new THREE.TorusGeometry(.6,.034,14,72),new THREE.MeshStandardMaterial({color:'#fff',emissive:'#fff',emissiveIntensity:2.8})),0,.58,0);break;
+    default: add(box(.94,.94,.94),0,.47,0);
+  }
+  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
+  return g;
+}
+
+/* ════════════════════════════════════════
+   ENTER AR — moves entire UI into XR DOM OVERLAY
+   ════════════════════════════════════════ */
+let xrSession = null;
+let xrRenderer = null;
+
+window.enterAR = async () => {
+  if (!webxrOK) {
+    alert('WebXR AR not supported on this device/browser.\n\nRequirements:\n• Android + Chrome\n• HTTPS (deploy to Netlify)\n\nSee Device Status above.');
+    return;
+  }
+
+  // Move entire UI into ar-root for dom-overlay
+  const arWrap = document.getElementById('ar-wrap');
+  arWrap.innerHTML = '';
+  // Clone the header + theme bar + shared UI into ar-root
+  arWrap.innerHTML = `
+    <div class="header" style="padding-top:16px">
+      <div class="logo">AIR</div>
+      <div class="logo-sub">AI IN REALITY — AR SESSION</div>
+    </div>
+    <div style="display:flex;justify-content:center;margin-bottom:16px">
+      <button onclick="exitAR()" style="background:rgba(255,94,44,.15);border:1px solid rgba(255,94,44,.4);color:#ff5e2c;padding:10px 28px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;cursor:pointer">✕ EXIT AR</button>
+    </div>
+  ` + buildUI();
+
+  document.getElementById('ar-root').classList.add('xr-active');
+  document.getElementById('main-wrap').style.display = 'none';
+
+  // Re-init chips and bindings inside ar-root
+  buildChips();
+  updateARBtn();
+
+  // Create XR renderer (invisible canvas, XR handles display)
+  const xrCanvas = document.createElement('canvas');
+  xrRenderer = new THREE.WebGLRenderer({ canvas: xrCanvas, antialias: true, alpha: true });
+  xrRenderer.setPixelRatio(devicePixelRatio);
+  xrRenderer.setSize(window.innerWidth, window.innerHeight);
+  xrRenderer.xr.enabled = true;
+  xrRenderer.shadowMap.enabled = true;
+
+  const xrScene = new THREE.Scene();
+  const xrCamera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+  xrScene.add(new THREE.AmbientLight(0xffffff, 1.6));
+  const xrKey = new THREE.DirectionalLight(0xffffff, 1.8);
+  xrKey.position.set(1, 3, 1); xrKey.castShadow = true; xrScene.add(xrKey);
+
+  // Reticle for hit-test
+  const reticle = new THREE.Mesh(
+    new THREE.RingGeometry(0.1, 0.14, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x00ff78, side: THREE.DoubleSide })
+  );
+  reticle.matrixAutoUpdate = false;
+  reticle.visible = false;
+  xrScene.add(reticle);
+
+  // Start session with dom-overlay on ar-root
+  try {
+    xrSession = await navigator.xr.requestSession('immersive-ar', {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.getElementById('ar-root') }
+    });
+  } catch (e) {
+    alert('AR session failed: ' + e.message);
+    exitAR(); return;
+  }
+
+  xrRenderer.xr.setReferenceSpaceType('local');
+  await xrRenderer.xr.setSession(xrSession);
+
+  document.getElementById('xr-reticle-hud').classList.add('active');
+  document.getElementById('xr-tap-hint').classList.add('active');
+
+  // Tap controller to place model
+  let placed = false;
+  let xrGroup = null;
+
+  const controller = xrRenderer.xr.getController(0);
+  controller.addEventListener('select', () => {
+    if (reticle.visible && group) {
+      if (!xrGroup) {
+        xrGroup = group.clone(true);
+        xrGroup.scale.setScalar(scaleMul);
+        xrScene.add(xrGroup);
+      }
+      xrGroup.position.setFromMatrixPosition(reticle.matrix);
+      xrGroup.visible = true;
+      placed = true;
+      reticle.visible = false;
+      document.getElementById('xr-reticle-hud').classList.remove('active');
+      document.getElementById('tap-title').textContent = '✓ PLACED!';
+      document.getElementById('tap-sub').textContent = 'Tap again to reposition · Exit AR when done';
+      setTimeout(() => { placed = false; reticle.visible = true; }, 2000);
+    }
+  });
+  xrScene.add(controller);
+
+  let htRequested = false, htSource = null;
+
+  xrRenderer.setAnimationLoop(async (timestamp, frame) => {
+    if (!frame) return;
+    if (!htRequested) {
+      const sess = xrRenderer.xr.getSession();
+      const vRef = await sess.requestReferenceSpace('viewer');
+      htSource = await sess.requestHitTestSource({ space: vRef });
+      htRequested = true;
+    }
+    if (htSource && !placed) {
+      const ref = xrRenderer.xr.getReferenceSpace();
+      const hits = frame.getHitTestResults(htSource);
+      if (hits.length > 0) {
+        const pose = hits[0].getPose(ref);
+        if (pose) { reticle.visible = true; reticle.matrix.fromArray(pose.transform.matrix); }
+      } else { reticle.visible = false; }
+    }
+    xrRenderer.render(xrScene, xrCamera);
+  });
+
+  xrSession.addEventListener('end', () => {
+    xrRenderer.setAnimationLoop(null);
+    htSource?.cancel();
+    xrSession = null;
+    document.getElementById('xr-reticle-hud').classList.remove('active');
+    document.getElementById('xr-tap-hint').classList.remove('active');
+    document.getElementById('ar-root').classList.remove('xr-active');
+    document.getElementById('main-wrap').style.display = '';
+    document.getElementById('ar-wrap').innerHTML = '';
+    // Re-init three.js on main canvas
+    renderer = null;
+  });
+};
+
+window.exitAR = () => { xrSession?.end(); };
+
+/* ════════════════════════════════════════
+   HANDLE PLACE BUTTON (inside AR or not)
+   ════════════════════════════════════════ */
+window.handlePlace = async () => {
+  if (webxrOK) {
+    // If already in AR session, just show placement hint
+    if (xrSession) {
+      document.getElementById('xr-reticle-hud').classList.add('active');
+      document.getElementById('xr-tap-hint').classList.add('active');
+      document.getElementById('tap-title').textContent = 'POINT AT A SURFACE';
+      document.getElementById('tap-sub').textContent = 'Tap to place your object';
+    } else {
+      await window.enterAR();
+    }
+  } else {
+    document.getElementById('ar-no-sup').classList.remove('hidden');
+  }
+};
+
+/* ════════════════════════════════════════
+   AI
+   ════════════════════════════════════════ */
+async function aiClassify(prompt) {
+  const types = Object.keys(OBJ).filter(k=>k!=='box').join(', ');
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:20,messages:[{role:'user',content:`Classify into one: ${types}, box.\nPrompt: "${prompt}"\nOnly single lowercase word.`}]})});
+    const d = await res.json();
+    const t = d.content?.[0]?.text?.trim().toLowerCase().replace(/[^a-z]/g,'');
+    return OBJ[t] ? t : kwFallback(prompt);
+  } catch { return kwFallback(prompt); }
+}
+async function aiDescribe(prompt) {
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:100,messages:[{role:'user',content:`One vivid sentence (max 20 words) describing 3D model: "${prompt}"\nNew line: COLOR:#hexcode`}]})});
+    const d = await res.json(); const txt = d.content?.[0]?.text||'';
+    const cm = txt.match(/COLOR:(#[0-9a-fA-F]{6})/i);
+    return { desc: txt.replace(/COLOR:#[0-9a-fA-F]{6}/gi,'').trim(), color: cm?cm[1]:null };
+  } catch { return { desc:'', color:null }; }
+}
+function kwFallback(p) {
+  const t = p.toLowerCase();
+  const km = {tiger:['tiger'],cat:['cat','kitten'],dog:['dog','puppy','retriever','husky'],elephant:['elephant'],bird:['bird','eagle','parrot','owl'],fish:['fish','shark','dolphin','whale'],tree:['tree','oak','pine','palm','forest'],rock:['rock','stone','boulder'],mountain:['mountain','volcano','hill'],car:['car','truck','vehicle','suv','ferrari'],rocket:['rocket','spaceship'],house:['house','home','cabin'],chair:['chair','stool'],table:['table','desk'],lamp:['lamp','lantern'],sofa:['sofa','couch'],shelf:['shelf','bookcase'],plant:['plant','flower','cactus','monstera'],cabinet:['cabinet','wardrobe'],monitor:['monitor','screen','laptop','tv'],bed:['bed','mattress'],sphere:['sphere','ball','globe','orb']};
+  for (const [k,ws] of Object.entries(km)) if (ws.some(w=>t.includes(w))) return k;
+  return 'box';
+}
+
+/* ════════════════════════════════════════
+   VOICE
+   ════════════════════════════════════════ */
+let isListening=false, rec=null;
+window.toggleVoice = () => {
+  if (isListening) { rec?.stop(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert('Voice requires Chrome/Edge.'); return; }
+  rec = new SR(); rec.lang='en-US'; rec.interimResults=false;
+  rec.onresult = e => { document.getElementById('prompt-input').value=e.results[0][0].transcript; setL(false); };
+  rec.onerror = ()=>setL(false); rec.onend = ()=>setL(false);
+  rec.start(); setL(true);
+};
+const setL = v => {
+  isListening=v;
+  document.getElementById('voice-btn').classList.toggle('on',v);
+  document.getElementById('voice-btn').textContent=v?'⏹':'🎙';
+  document.getElementById('voice-ind').classList.toggle('hidden',!v);
+};
+
+/* ════════════════════════════════════════
+   GENERATE
+   ════════════════════════════════════════ */
+const STEPS = ['CLASSIFYING OBJECT','BUILDING GEOMETRY','APPLYING MATERIALS','SETTING LIGHTS','RENDERING'];
+let stepTmr = null;
+
+window.generate = async () => {
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if (!prompt) { document.getElementById('prompt-input').focus(); return; }
+
+  ['input-card','picks-card','how-card','viewer-section'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  document.getElementById('gen-card').classList.remove('hidden');
+  document.getElementById('gq').textContent = `"${prompt}"`;
+  let si=0; document.getElementById('gs').textContent=STEPS[0];
+  stepTmr = setInterval(()=>{ si=(si+1)%STEPS.length; document.getElementById('gs').textContent=STEPS[si]; },480);
+
+  const [type, ai] = await Promise.all([aiClassify(prompt), aiDescribe(prompt)]);
+  clearInterval(stepTmr);
+  const obj = OBJ[type], color = ai.color||obj.color;
+
+  if (!renderer) initThree();
+  if (group) { scene.remove(group); group=null; }
+  autoRot = true;
+  group = buildModel(type, color);
+  group.scale.setScalar(scaleMul);
+  scene.add(group);
+  camera.position.set(0,1.6,4.8);
+  controls.target.set(0,.65,0); controls.update();
+
+  document.getElementById('gen-card').classList.add('hidden');
+  document.getElementById('viewer-section').classList.remove('hidden');
+  document.getElementById('how-card').classList.remove('hidden');
+  document.getElementById('ptag-text').textContent = prompt;
+  document.getElementById('vlabel').textContent = `${obj.label.toUpperCase()} · ${type.toUpperCase()}`;
+
+  if (ai.desc) { document.getElementById('ai-msg').classList.remove('hidden'); document.getElementById('ai-txt').textContent=ai.desc; }
+  else document.getElementById('ai-msg').classList.add('hidden');
+
+  updateARBtn();
+  const cv = document.getElementById('air-canvas');
+  const nw = cv.parentElement.clientWidth||680;
+  renderer.setSize(nw,400); camera.aspect=nw/400; camera.updateProjectionMatrix();
+};
+
+window.setScale = v => {
+  document.getElementById('sval').textContent=parseFloat(v).toFixed(1)+'×';
+  scaleMul=parseFloat(v); if(group)group.scale.setScalar(scaleMul);
+};
+window.doShare = async () => {
+  const p = document.getElementById('ptag-text').textContent;
+  if (navigator.share) await navigator.share({title:'AIR',text:`I placed "${p}" in AR with AIR!`,url:location.href}).catch(()=>{});
+  else { await navigator.clipboard.writeText(location.href).catch(()=>{}); alert('Link copied!'); }
+};
+window.goBack = () => {
+  document.getElementById('viewer-section').classList.add('hidden');
+  document.getElementById('ai-msg').classList.add('hidden');
+  ['input-card','picks-card','how-card'].forEach(id=>document.getElementById(id).classList.remove('hidden'));
+  setTimeout(()=>document.getElementById('prompt-input').focus(),80);
+};
+document.getElementById('prompt-input').addEventListener('keydown',e=>{if(e.key==='Enter')generate();});
+initThree();
+</script>
+</body>
+</html>
